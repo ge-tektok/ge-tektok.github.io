@@ -4,16 +4,25 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 const CANVAS_W = 800
 const CANVAS_H = 400
 const GROUND_Y = 340
-const GRAVITY = 1
-const JUMP_FORCE = -20
+const GRAVITY = 0.2
+const JUMP_FORCE = -10
 const PLAYER_W = 30
 const PLAYER_H = 80
 const PLAYER_X = 80
 const BLOCK_SIZE = 30
-const INITIAL_SPEED = 5
-const SPEED_INCREMENT = 0.003
+const INITIAL_SPEED = 2
+const SPEED_INCREMENT = 0.0007
 const MIN_SPAWN_DISTANCE = 350  // 障害物間の最小空間距離 (px)
 const SPAWN_DISTANCE_RANGE = 400 // 最小距離に加えるランダム幅 (px)
+
+// ---- Taunt messages on game over ----
+const TAUNT_MESSAGES = [
+  '全力コミットしていただいて良いですか?',
+  'まず目標は1ランクアップからですね',
+  '道のり楽しめてなさそう...',
+  '「こと」はゴールですよ。文を読む必要はありません',
+  'これでは表面は任せられないですね',
+]
 // ジャンプ持続フレーム (物理ベース・初速時): 2 * |JUMP_FORCE| / GRAVITY
 // 速度に応じて gravity ∝ k², jumpForce ∝ k のためジャンプ高さ一定・対空距離一定
 const JUMP_DURATION_FRAMES = Math.ceil(2 * Math.abs(JUMP_FORCE) / GRAVITY)
@@ -32,17 +41,18 @@ const STORY_LINES = [
   '',
   '',
   'DeNAに入社する直前に、',
-  'オーストラリアに旅行に行ったんですよね。',
+  'オーストラリアに旅行に行ったんですよ。',
   '服も色々持って行ったのですが、',
   '日本っぽい服も一着だけ持って行きました。',
-  '結構可愛い小鳥が描かれおり、',
+  '結構可愛い小鳥が描かれており、',
+  '鳥の名前も書かれていました。',
   'Japanese Great Tits (日本のシジュウカラ)',
-  'って、鳥の名前も書かれていました。',
+  '',
   'でも、Titsって、',
   '胸 って意味もあったんですね。',
   'Japanese Great Tits (再掲)',
-  'もうオーストラリア人みんな二度見ですよ。',
-  '僕の思い出を返してください',
+  '僕の思い出と引き換えに、',
+  'デライトを届けたお話でした。'
 ]
 
 // ---- Types ----
@@ -175,6 +185,7 @@ export default function App() {
   const speed = useRef(INITIAL_SPEED)
   const spawnTimer = useRef(0)
   const triggerClear = useRef(false)
+  const tauntMessage = useRef('')
 
   const [uiState, setUiState] = useState<GameState>('title')
   const [storyIndex, setStoryIndex] = useState(0)
@@ -209,10 +220,12 @@ export default function App() {
   // ---- Input ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return
+      if (e.code !== 'Space' && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight') return
       e.preventDefault()
-      if (state.current === 'title' || state.current === 'gameover' || state.current === 'clear') {
-        resetGame()
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        if (state.current === 'title' || state.current === 'gameover' || state.current === 'clear') {
+          resetGame()
+        }
         return
       }
       if (state.current === 'playing' && onGround.current) {
@@ -251,8 +264,7 @@ export default function App() {
         if (spawnTimer.current <= 0) {
           const blocks = 1 + Math.floor(Math.random() * 3)
           obstacles.current.push({ x: CANVAS_W + 10, blocks })
-          const physicsMin = Math.max(MIN_SPAWN_DISTANCE, JUMP_DURATION_FRAMES * speed.current)
-          spawnTimer.current = Math.floor((physicsMin + Math.random() * SPAWN_DISTANCE_RANGE) / speed.current)
+          spawnTimer.current = Math.floor((MIN_SPAWN_DISTANCE + Math.random() * SPAWN_DISTANCE_RANGE) / speed.current)
         }
 
         obstacles.current = obstacles.current
@@ -276,6 +288,7 @@ export default function App() {
           ) {
             state.current = 'gameover'
             if (score.current > highScore.current) highScore.current = score.current
+            tauntMessage.current = TAUNT_MESSAGES[Math.floor(Math.random() * TAUNT_MESSAGES.length)]
             setUiState('gameover')
             break
           }
@@ -336,7 +349,7 @@ export default function App() {
         ctx.fillText('JUMP!', CANVAS_W / 2, CANVAS_H / 2 - 30)
 
         ctx.font = `9px ${PIXEL_FONT}`
-        ctx.fillText('-- PRESS SPACE TO START --', CANVAS_W / 2, CANVAS_H / 2 + 20)
+        ctx.fillText('-- PRESS SHIFT TO START --', CANVAS_W / 2, CANVAS_H / 2 + 20)
         ctx.textAlign = 'left'
       }
 
@@ -354,8 +367,8 @@ export default function App() {
         ctx.textAlign = 'center'
         ctx.fillText('CONGRATULATIONS!', CANVAS_W / 2, CANVAS_H / 2 - 60)
 
-        ctx.font = `9px ${PIXEL_FONT}`
-        ctx.fillText('最後まで聞いてくれてありがとう', CANVAS_W / 2, CANVAS_H / 2 - 20)
+        ctx.font = `16px ${PIXEL_FONT}`
+        ctx.fillText('発言責任関係のネタは思いつきませんでした', CANVAS_W / 2, CANVAS_H / 2 - 20)
 
         ctx.font = `10px ${PIXEL_FONT}`
         ctx.fillStyle = '#fff'
@@ -364,7 +377,7 @@ export default function App() {
 
         ctx.font = `8px ${PIXEL_FONT}`
         ctx.fillStyle = '#aaa'
-        ctx.fillText('-- PRESS SPACE TO RETRY --', CANVAS_W / 2, CANVAS_H / 2 + 88)
+        ctx.fillText('-- PRESS SHIFT TO RETRY --', CANVAS_W / 2, CANVAS_H / 2 + 88)
         ctx.textAlign = 'left'
       }
 
@@ -386,9 +399,13 @@ export default function App() {
         ctx.fillText(`SCORE  ${score.current}`, CANVAS_W / 2, CANVAS_H / 2)
         ctx.fillText(`BEST   ${highScore.current}`, CANVAS_W / 2, CANVAS_H / 2 + 26)
 
+        ctx.font = `16px ${PIXEL_FONT}`
+        ctx.fillStyle = '#f88'
+        ctx.fillText(tauntMessage.current, CANVAS_W / 2, CANVAS_H / 2 + 52)
+
         ctx.font = `8px ${PIXEL_FONT}`
         ctx.fillStyle = '#aaa'
-        ctx.fillText('-- PRESS SPACE TO RETRY --', CANVAS_W / 2, CANVAS_H / 2 + 68)
+        ctx.fillText('-- PRESS SHIFT TO RETRY --', CANVAS_W / 2, CANVAS_H / 2 + 80)
         ctx.textAlign = 'left'
       }
     }
@@ -444,7 +461,7 @@ export default function App() {
         )}
       </div>
       <p style={{ color: '#555', marginTop: 16, fontSize: 9, fontFamily: PIXEL_FONT, letterSpacing: 1 }}>
-        SPACE でジャンプ！障害物を避けよう
+        SHIFT でスタート・SPACE でジャンプ！障害物を避けよう
       </p>
     </div>
   )
