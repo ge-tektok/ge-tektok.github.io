@@ -12,6 +12,7 @@ const PLAYER_X = 80
 const BLOCK_SIZE = 30
 const INITIAL_SPEED = 2
 const SPEED_INCREMENT = 0.0007
+const TIME_SCALE = 2.0  // ゲーム全体の速度倍率。上げると速くなる（GRAVITY/JUMP_FORCE調整不要）
 const MIN_SPAWN_DISTANCE = 350  // 障害物間の最小空間距離 (px)
 const SPAWN_DISTANCE_RANGE = 400 // 最小距離に加えるランダム幅 (px)
 
@@ -47,7 +48,7 @@ const STORY_LINES = [
   '結構可愛い小鳥が描かれており、',
   '鳥の名前も書かれていました。',
   'Japanese Great Tits (日本のシジュウカラ)',
-  '',
+  '......',
   'でも、Titsって、',
   '胸 って意味もあったんですね。',
   'Japanese Great Tits (再掲)',
@@ -186,6 +187,7 @@ export default function App() {
   const spawnTimer = useRef(0)
   const triggerClear = useRef(false)
   const tauntMessage = useRef('')
+  const lastTime = useRef(0)
 
   const [uiState, setUiState] = useState<GameState>('title')
   const [storyIndex, setStoryIndex] = useState(0)
@@ -212,6 +214,7 @@ export default function App() {
     score.current = 0
     speed.current = INITIAL_SPEED
     spawnTimer.current = 0
+    lastTime.current = 0
     state.current = 'playing'
     setUiState('playing')
     setStoryIndex(0)
@@ -242,33 +245,44 @@ export default function App() {
     const ctx = canvasRef.current?.getContext('2d')
     if (!ctx) return
     let raf = 0
+    // 60fps を基準 (1フレーム = 1000/60 ms) に正規化したデルタ
+    const TARGET_FRAME_MS = 1000 / 60
 
-    const loop = () => {
+    const loop = (timestamp: number) => {
       raf = requestAnimationFrame(loop)
+
+      // 初回フレームはスキップして lastTime を初期化
+      if (lastTime.current === 0) {
+        lastTime.current = timestamp
+        return
+      }
+      // dt=1.0 が 60fps 相当。タブ非表示などの大ジャンプを 3 フレーム分に制限
+      const dt = Math.min((timestamp - lastTime.current) / TARGET_FRAME_MS, 3) * TIME_SCALE
+      lastTime.current = timestamp
 
       // --- Update ---
       if (state.current === 'playing') {
-        frameCount.current++
+        frameCount.current += dt
         score.current = Math.floor(frameCount.current / 6)
         speed.current = INITIAL_SPEED + frameCount.current * SPEED_INCREMENT
 
-        velY.current += getDynamicPhysics(speed.current).gravity
-        playerY.current += velY.current
+        velY.current += getDynamicPhysics(speed.current).gravity * dt
+        playerY.current += velY.current * dt
         if (playerY.current >= GROUND_Y - PLAYER_H) {
           playerY.current = GROUND_Y - PLAYER_H
           velY.current = 0
           onGround.current = true
         }
 
-        spawnTimer.current--
+        spawnTimer.current -= dt
         if (spawnTimer.current <= 0) {
           const blocks = 1 + Math.floor(Math.random() * 3)
           obstacles.current.push({ x: CANVAS_W + 10, blocks })
-          spawnTimer.current = Math.floor((MIN_SPAWN_DISTANCE + Math.random() * SPAWN_DISTANCE_RANGE) / speed.current)
+          spawnTimer.current = (MIN_SPAWN_DISTANCE + Math.random() * SPAWN_DISTANCE_RANGE) / speed.current
         }
 
         obstacles.current = obstacles.current
-          .map(o => ({ ...o, x: o.x - speed.current }))
+          .map(o => ({ ...o, x: o.x - speed.current * dt }))
           .filter(o => o.x + BLOCK_SIZE > -10)
 
         if (triggerClear.current) {
